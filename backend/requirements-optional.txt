@@ -1,0 +1,8 @@
+# Optional heavy ML packages
+# Install these only if you have sufficient disk space (>5GB free)
+# These enable BERT/Sentence-BERT embeddings (optional feature)
+
+transformers==4.36.2
+torch>=2.2.0
+sentence-transformers==2.2.2
+
