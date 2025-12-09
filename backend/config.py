@@ -17,6 +17,9 @@ class Config:
     ML_MODELS_DIR = os.environ.get('ML_MODELS_DIR', './ml/models')
     DATA_DIR = os.environ.get('DATA_DIR', './data')
     
+    # Gemini AI Configuration
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+    
     # CORS
     CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:3000,http://localhost:3001').split(',')
     

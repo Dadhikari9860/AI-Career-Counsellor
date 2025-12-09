@@ -1,5 +1,5 @@
 """
-Chatbot routes
+Chatbot routes - Enhanced with Google Gemini AI
 """
 
 from flask import Blueprint, request, jsonify
@@ -8,6 +8,7 @@ from app import db
 from app.models import User, CareerRole, Job, LearningResource
 from app.services.ml_service import ml_service
 from app.services.job_scraper import JobScraper
+from app.services.gemini_service import gemini_service
 from app.utils.auth_helpers import get_current_user_id
 from app.utils.role_helpers import find_role_by_name
 
@@ -16,7 +17,7 @@ bp = Blueprint('chatbot', __name__)
 @bp.route('/chat', methods=['POST'])
 @jwt_required()
 def chat():
-    """Chatbot endpoint"""
+    """Chatbot endpoint - Enhanced with Gemini AI"""
     user_id = get_current_user_id()
     user = User.query.get(user_id)
     
@@ -25,11 +26,68 @@ def chat():
     
     data = request.get_json()
     message = data.get('message', '').strip()
+    use_ai = data.get('use_ai', True)  # Default to using AI if available
     
     if not message:
         return jsonify({'error': 'Message is required'}), 400
     
-    # Classify intent
+    # Build user context for AI
+    user_context = {
+        'name': user.full_name or user.username,
+        'skills': user.skills or [],
+        'experience_years': user.experience_years or 0,
+        'current_role': user.current_role or '',
+        'target_role': user.target_role or '',
+        'location': user.location or '',
+        'education': user.education or ''
+    }
+    
+    # Use Gemini AI or smart fallback responses
+    print(f"📨 Chat request: '{message[:50]}...' | Gemini available: {gemini_service.is_available}")
+    
+    # Always use gemini_service - it has smart fallback when AI is not available
+    print("🤖 Getting intelligent response...")
+    ai_response = gemini_service.get_career_response(message, user_context)
+    
+    response = {
+        'message': ai_response['message'],
+        'suggestions': ai_response['suggestions'],
+        'ai_powered': ai_response.get('ai_powered', False),
+        'intent': 'smart_response',
+        'confidence': 0.85,
+        'data': {}
+    }
+    
+    # Enhance with relevant data based on message content
+    message_lower = message.lower()
+    
+    # If asking about jobs, include job data
+    if any(word in message_lower for word in ['job', 'jobs', 'hiring', 'position', 'work', 'opportunity', 'find']):
+        user_skills = [s if isinstance(s, str) else s.get('name', '') for s in (user.skills or [])]
+        target_role = user.target_role or user.current_role or 'Software Engineer'
+        
+        try:
+            scraper = JobScraper()
+            scraped_jobs = scraper.get_jobs_for_user(user_skills[:3], target_role, user.location or "")
+            if scraped_jobs:
+                response['data']['jobs'] = scraped_jobs[:5]
+        except Exception as e:
+            print(f"Job scraping error: {e}")
+    
+    # If asking about skills/gaps, include skill gap data
+    if any(word in message_lower for word in ['skill', 'gap', 'missing', 'need', 'learn', 'analyze']):
+        if user.target_role:
+            target_role_obj = find_role_by_name(user.target_role)
+            if target_role_obj:
+                skill_gap = ml_service.analyze_skill_gap(
+                    user.skills or [],
+                    target_role_obj.required_skills or []
+                )
+                response['data']['skill_gap'] = skill_gap
+    
+    return jsonify(response), 200
+    
+    # Old ML-based intent classification (kept for reference but not used)
     intent_result = ml_service.classify_intent(message)
     intent = intent_result['intent']
     confidence = intent_result['confidence']
@@ -40,7 +98,8 @@ def chat():
         'intent': intent,
         'confidence': confidence,
         'data': {},
-        'suggestions': []  # Interactive suggestions
+        'suggestions': [],
+        'ai_powered': False
     }
     
     if intent == 'career_advice':
